@@ -46,6 +46,7 @@
   .mischief{border:1px solid var(--wax);color:#D89A8A;background:transparent;font-family:var(--kai);
     font-size:13px;letter-spacing:2px;padding:7px 16px;border-radius:3px;cursor:pointer}
   .mischief:hover{background:var(--wax);color:#F2E6C8}
+  #mode{font-family:var(--song);font-size:11px;color:#8B7D5C;letter-spacing:1px}
 
   #main{flex:1;display:flex;min-height:0;position:relative}
   /* 地图：sepia 滤镜把矢量底图做旧成羊皮纸 */
@@ -130,6 +131,7 @@
   <header>
     <div><h1>游民活点地图</h1><div class="en">正在显示：全部墨迹</div></div>
     <div class="spacer"></div>
+    <span id="mode">连接云端卷轴库…</span>
     <button class="mischief" onclick="mischiefManaged()">恶作剧完毕</button>
   </header>
   <div id="main">
@@ -143,7 +145,7 @@
         <p>远程可完成的小事 · 点脚印看详情 · 联系方式点按才显</p>
       </div>
       <div class="filters" id="filters"></div>
-      <div id="tasks"></div>
+      <div id="tasks"><div class="empty">云端卷轴展开中…</div></div>
     </div>
     <div id="quill"><button onclick="toggleForm()">以墨为誓 · 留下任务</button></div>
     <form id="form" onsubmit="return addTask(event)">
@@ -170,9 +172,8 @@
   </div>
 </div>
 
+<!-- 腾讯地图（合规：默认代理模式；对外发布版在 TMAP_KEY 填 lbs.qq.com 申请的 key，两套自动切换） -->
 <script>
-/* ===== 腾讯地图（合规：默认代理模式；对外发布版在下方 TMAP_KEY 填入
-   lbs.qq.com 申请的 key 并配 Referer 白名单，两套自动切换） ===== */
 const TMAP_KEY = '';
 function loadTMap(cb){
   if (TMAP_KEY) {
@@ -186,6 +187,51 @@ function loadTMap(cb){
     s.onload = cb; document.head.appendChild(s);
   }
 }
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
+<script>
+/* ===== 云端卷轴库（WorkBuddy Cloud；失败时明示切换本机卷轴） ===== */
+const TABLE = 'nomad_tasks';
+const cloud = WorkBuddyCloud.createWorkBuddyCloud({
+  endpoint: 'https://nomad-task-map.app.workbuddy.host',
+  publishableKey: 'wbpk_utlu3tcy80GHrqeN0usuMP_LPxUxGjREGdlIpFIXxWOcsxEEPNYTRcQ',
+});
+let CLOUD = true;          // 云端可用性开关（失败时明示降级为本机模式）
+let TASKS = [];            // 内存缓存
+const LKEY = 'nomad_tasks_v1';
+const localLoad = () => { try { return JSON.parse(localStorage.getItem(LKEY)) || []; } catch { return []; } };
+const localSave = a => localStorage.setItem(LKEY, JSON.stringify(a));
+
+function setMode(ok, msg){
+  CLOUD = ok;
+  document.getElementById('mode').textContent = msg;
+  document.getElementById('mode').style.color = ok ? '#8B7D5C' : '#C88A6A';
+}
+
+async function refreshTasks(){
+  if (CLOUD) {
+    try {
+      const { data, error } = await cloud.database.from(TABLE)
+        .select('*').order('created_at', { ascending: false }).limit(200);
+      if (error) throw error;
+      TASKS = (data || []).map(r => ({ uid: r.task_uid, title: r.title, cat: r.cat,
+        desc: r.descr, city: r.city || '远程', contact: r.contact,
+        status: r.status, ts: r.created_at ? Date.parse(r.created_at) : Date.now() }));
+      setMode(true, '云端卷轴库 · 全网共享');
+      return;
+    } catch (e) {
+      setMode(false, '云端不可达 · 已切换本机卷轴（' + (e.message || '网络错误') + '）');
+      toast('云端卷轴暂时展开不了，先翻本机的——数据不会丢');
+    }
+  }
+  if (!CLOUD) TASKS = localLoad();
+}
+
+const cloudInsert = t => cloud.database.from(TABLE).insert({
+  task_uid: t.uid, title: t.title, cat: t.cat, descr: t.desc,
+  city: t.city, contact: t.contact, status: t.status });
+const cloudClaim = uid => cloud.database.from(TABLE)
+  .update({ status: 'done' }).eq('task_uid', uid);
 
 /* ===== 学院（分类）与城市 ===== */
 const CATS = {
@@ -201,25 +247,13 @@ const CITIES = {
   '上海': [31.23, 121.47], '深圳': [22.54, 114.06], '杭州': [30.27, 120.15], '成都': [30.57, 104.07],
 };
 
-/* ===== 本地卷轴库（localStorage；上云版此处换云端读写） ===== */
-const KEY = 'nomad_tasks_v1';
-const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; } };
-const save = a => localStorage.setItem(KEY, JSON.stringify(a));
-
-const SEED = [
-  { uid:'s1', title:'帮我看一个 Node 报错堆栈', cat:'defense', desc:'RangeError: Maximum call stack size exceeded，自己排查两小时无果，有偿请喝咖啡。', city:'远程', contact:'公众号后台留言：知识地下城', status:'open', ts:Date.now()-86400000 },
-  { uid:'s2', title:'把一页产品介绍翻成英文', cat:'runes', desc:'中文 600 字，要求口语化、别机翻味。验收：母语者读得顺。', city:'远程', contact:'xhs：酒里加盐', status:'open', ts:Date.now()-43200000 },
-  { uid:'s3', title:'给开源小工具画一张 1024 图标', cat:'transfig', desc:'扁平、单色可反白。验收：16px 下仍可辨认。', city:'大理', contact:'邮箱见公众号', status:'open', ts:Date.now()-7200000 },
-];
-if (!localStorage.getItem(KEY)) save(SEED);
-
 let filter = 'all', map, markers, infoWin;
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 function openMap(){
   document.getElementById('seal').classList.add('open');
   document.getElementById('world').classList.add('show');
-  setTimeout(initMap, 300);
+  setTimeout(() => { initMap(); refreshTasks().then(() => { renderTasks(); syncPins(); }); }, 300);
 }
 function mischiefManaged(){
   document.getElementById('seal').classList.remove('open');
@@ -239,10 +273,10 @@ function initMap(){
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g fill="#8C7B54"><ellipse cx="9" cy="7" rx="5" ry="7"/><ellipse cx="17" cy="9" rx="5" ry="7"/></g></svg>') }),
   }, geometries: [] });
   markers.on('click', e => {
-    const t = load().find(x => x.uid === e.geometry.id);
+    const t = TASKS.find(x => x.uid === e.geometry.id);
     if (t) showTask(t.uid);
   });
-  initFilters(); renderTasks(); initCitySelect();
+  initFilters(); initCitySelect();
 }
 
 function initCitySelect(){
@@ -258,10 +292,8 @@ function initFilters(){
 function setFilter(k){ filter = k; initFilters(); renderTasks(); }
 
 function renderTasks(){
-  const all = load();
   const box = document.getElementById('tasks');
-  const rows = all.filter(t => filter === 'all' || t.cat === filter)
-    .sort((a, b) => b.ts - a.ts);
+  const rows = TASKS.filter(t => filter === 'all' || t.cat === filter);
   box.innerHTML = rows.length ? rows.map(t => `
     <div class="task ${t.status === 'done' ? 'done' : ''}">
       ${t.status === 'done' ? '<div class="stamp">已完成</div>' : ''}
@@ -275,12 +307,11 @@ function renderTasks(){
         ${t.status === 'open' ? '<button class="pin-btn" onclick="claimTask(\'' + t.uid + '\')">接单了→盖章</button>' : ''}
       </div>
     </div>`).join('') : '<div class="empty">这一栏还没有墨迹 —— 成为第一个落墨的人</div>';
-  syncPins();
 }
 
 function syncPins(){
   if (!markers) return;
-  const geoms = load().filter(t => t.status === 'open' && t.city !== '远程').map((t, i) => ({
+  const geoms = TASKS.filter(t => t.status === 'open' && t.city !== '远程').map(t => ({
     id: t.uid, styleId: 'pin',
     position: new TMap.LatLng(CITIES[t.city][0] + (t.ts % 40 - 20) * 0.012,
                               CITIES[t.city][1] + (t.ts % 37 - 18) * 0.012),
@@ -291,24 +322,42 @@ function syncPins(){
 function showTask(uid){ setFilter('all'); const el = [...document.querySelectorAll('.task')].find(e => e.innerHTML.includes('revealContact(\'' + uid)); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
 
 function revealContact(uid, el){
-  const t = load().find(x => x.uid === uid);
+  const t = TASKS.find(x => x.uid === uid);
   if (t) el.outerHTML = '<span class="contact" style="color:var(--ink)">' + esc(t.contact) + '</span>';
 }
 
-function claimTask(uid){
-  const all = load(); const t = all.find(x => x.uid === uid);
-  if (t) { t.status = 'done'; save(all); renderTasks(); toast('已盖章：恶作剧（的这一单）完毕'); }
+async function claimTask(uid){
+  const t = TASKS.find(x => x.uid === uid);
+  if (!t) return;
+  if (CLOUD) {
+    try {
+      const { error } = await cloudClaim(uid);
+      if (error) throw error;
+    } catch (e) { toast('盖章失败：' + e.message); return; }
+  } else {
+    t.status = 'done'; localSave(TASKS);
+  }
+  await refreshTasks(); renderTasks(); syncPins();
+  toast('已盖章：恶作剧（的这一单）完毕');
 }
 
-function addTask(ev){
+async function addTask(ev){
   ev.preventDefault();
-  const all = load();
-  all.push({ uid: 't' + Date.now().toString(36), title: tTitle.value.trim(),
+  const t = { uid: 't' + Date.now().toString(36), title: tTitle.value.trim(),
     cat: tCat.value, desc: tDesc.value.trim(), city: tCity.value,
-    contact: tContact.value.trim(), status: 'open', ts: Date.now() });
-  save(all);
-  ev.target.reset(); toggleForm(); renderTasks();
+    contact: tContact.value.trim(), status: 'open', ts: Date.now() };
+  if (CLOUD) {
+    try {
+      const { error } = await cloudInsert(t);
+      if (error) throw error;
+    } catch (e) { toast('落墨失败：' + e.message); return false; }
+  } else {
+    TASKS.unshift(t); localSave(TASKS);
+  }
+  ev.target.reset(); toggleForm();
+  await refreshTasks(); renderTasks(); syncPins();
   toast('墨迹已落 —— 地图上亮起了新的脚印');
+  return false;
 }
 
 function toggleForm(){ document.getElementById('form').classList.toggle('show'); }
@@ -324,6 +373,7 @@ function toast(msg){
 }
 
 loadTMap(() => { initMap(); });
+refreshTasks().then(() => { renderTasks(); syncPins(); });
 </script>
 </body>
 </html>
