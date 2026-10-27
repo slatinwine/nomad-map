@@ -193,8 +193,8 @@ function loadTMap(cb){
 /* ===== 云端卷轴库（WorkBuddy Cloud；失败时明示切换本机卷轴） ===== */
 const TABLE = 'nomad_tasks';
 const cloud = WorkBuddyCloud.createWorkBuddyCloud({
-  endpoint: 'https://nomad-task-map.app.workbuddy.host',
-  publishableKey: 'wbpk_utlu3tcy80GHrqeN0usuMP_LPxUxGjREGdlIpFIXxWOcsxEEPNYTRcQ',
+  endpoint: 'https://nomad-task-map-42915.app.workbuddy.host',
+  publishableKey: 'wbpk_LWIaHIS20D9wBfelrsHVPx_2M36ZkyD8kw4RDMji4IPjRwANWIboIyL',
 });
 let CLOUD = true;          // 云端可用性开关（失败时明示降级为本机模式）
 let TASKS = [];            // 内存缓存
@@ -220,7 +220,10 @@ async function refreshTasks(){
       setMode(true, '云端卷轴库 · 全网共享');
       return;
     } catch (e) {
-      setMode(false, '云端不可达 · 已切换本机卷轴（' + (e.message || '网络错误') + '）');
+      const m = e.message || '';
+      setMode(false, /origin/i.test(m)
+        ? '镜像站不开放云端共享 · 已切换本机卷轴（完整共享版请走主站链接）'
+        : '云端不可达 · 已切换本机卷轴（' + m + '）');
       toast('云端卷轴暂时展开不了，先翻本机的——数据不会丢');
     }
   }
