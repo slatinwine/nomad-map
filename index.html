@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>游民活点地图 · Nomad's Map</title>
+<style>
+  :root{
+    --parchment:#E8DCBF; --parchment-dk:#D9C9A3; --ink:#3B2F1E; --ink-soft:#6B5A3E;
+    --wax:#8C2F1B; --gold:#7A5C1E; --line:rgba(59,47,30,.35);
+    --kai:"Kaiti SC","KaiTi","STKaiti","SimKai",serif;
+    --song:"Songti SC","SimSun",serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#171310;color:#E8DCBF;font-family:var(--kai);overflow:hidden;height:100dvh}
+
+  /* ===== 卷轴封印（开场） ===== */
+  #seal{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;background:#171310;transition:opacity .9s ease,visibility .9s}
+  #seal.open{opacity:0;visibility:hidden}
+  .scroll-cover{width:min(560px,88vw);background:var(--parchment);border-radius:6px;
+    padding:34px 30px 28px;text-align:center;color:var(--ink);position:relative;
+    box-shadow:0 0 0 3px #0d0b08,0 0 60px rgba(232,220,191,.15);transform:rotate(-.6deg)}
+  .scroll-cover::before,.scroll-cover::after{content:"";position:absolute;left:0;right:0;height:14px;
+    background:#C9B78E;box-shadow:inset 0 0 8px rgba(0,0,0,.25)}
+  .scroll-cover::before{top:-20px}.scroll-cover::after{bottom:-20px}
+  .scroll-cover h1{margin:0;font-size:24px;letter-spacing:6px;font-weight:400}
+  .scroll-cover .sub{font-family:var(--song);font-size:12px;color:var(--ink-soft);margin-top:6px;letter-spacing:2px}
+  .oath{margin:26px auto 0;border:1.5px solid var(--ink);background:transparent;color:var(--ink);
+    font-family:var(--kai);font-size:17px;letter-spacing:4px;padding:11px 30px;cursor:pointer;
+    border-radius:3px;transition:all .3s}
+  .oath:hover{background:var(--ink);color:var(--parchment)}
+  .hint{margin-top:16px;font-family:var(--song);font-size:11px;color:var(--ink-soft)}
+  .wax{position:absolute;top:-16px;right:22px;width:44px;height:44px;border-radius:50%;
+    background:var(--wax);display:flex;align-items:center;justify-content:center;color:#F2E6C8;
+    font-size:19px;box-shadow:inset 0 0 8px rgba(0,0,0,.4)}
+
+  /* ===== 展开后的羊皮纸世界 ===== */
+  #world{position:fixed;inset:0;display:none;flex-direction:column}
+  #world.show{display:flex}
+  header{display:flex;align-items:center;gap:12px;padding:12px 18px;background:#171310;
+    border-bottom:1px solid rgba(232,220,191,.15)}
+  header h1{margin:0;font-size:19px;letter-spacing:4px;font-weight:400;color:var(--parchment)}
+  header .en{font-family:var(--song);font-size:10px;color:#8B7D5C;letter-spacing:1px;margin-top:2px}
+  header .spacer{flex:1}
+  .mischief{border:1px solid var(--wax);color:#D89A8A;background:transparent;font-family:var(--kai);
+    font-size:13px;letter-spacing:2px;padding:7px 16px;border-radius:3px;cursor:pointer}
+  .mischief:hover{background:var(--wax);color:#F2E6C8}
+
+  #main{flex:1;display:flex;min-height:0;position:relative}
+  /* 地图：sepia 滤镜把矢量底图做旧成羊皮纸 */
+  #map{flex:1;filter:sepia(.82) contrast(.92) brightness(1.04) saturate(.75)}
+  .vignette{position:absolute;inset:0;pointer-events:none;
+    box-shadow:inset 0 0 120px 30px rgba(23,19,16,.55)}
+  .frame{position:absolute;inset:10px;pointer-events:none;border:1.5px solid rgba(59,47,30,.5);border-radius:4px}
+
+  /* 墨迹行走脚印动画（地图上角的过路脚印） */
+  .walker{position:absolute;bottom:26px;right:0;z-index:5;pointer-events:none;opacity:.8}
+  .walker span{position:absolute;font-size:15px;color:rgba(59,47,30,.75);
+    animation:walk 14s linear infinite}
+  .walker span:nth-child(2){animation-delay:1.4s}
+  .walker span:nth-child(3){animation-delay:2.8s}
+  @keyframes walk{
+    0%{transform:translate(0,0);opacity:0}
+    4%{opacity:.85}
+    90%{opacity:.7}
+    100%{transform:translate(-72vw,-40px);opacity:0}
+  }
+
+  /* 侧栏：任务羊皮纸 */
+  #panel{width:360px;max-width:92vw;background:var(--parchment);color:var(--ink);
+    display:flex;flex-direction:column;border-left:3px solid #0d0b08}
+  .panel-head{padding:14px 16px 10px;border-bottom:1px dashed var(--line)}
+  .panel-head h2{margin:0;font-size:17px;letter-spacing:3px;font-weight:400}
+  .panel-head p{margin:4px 0 0;font-family:var(--song);font-size:11px;color:var(--ink-soft)}
+  .filters{display:flex;flex-wrap:wrap;gap:6px;padding:10px 16px}
+  .filters button{background:transparent;border:1px solid var(--line);color:var(--ink-soft);
+    font-family:var(--kai);font-size:12px;padding:4px 11px;border-radius:999px;cursor:pointer}
+  .filters button.on{background:var(--ink);color:var(--parchment);border-color:var(--ink)}
+  #tasks{flex:1;overflow-y:auto;padding:4px 14px 20px}
+  .task{border:1px solid var(--line);border-radius:5px;background:rgba(255,251,240,.5);
+    margin:10px 0;padding:12px 14px;position:relative}
+  .task.done{opacity:.55}
+  .task h3{margin:0 0 4px;font-size:15px;font-weight:400;letter-spacing:1px}
+  .task .cat{display:inline-block;font-size:11px;color:var(--wax);border:1px solid rgba(140,47,27,.4);
+    border-radius:3px;padding:1px 7px;margin-bottom:6px}
+  .task p{margin:4px 0;font-family:var(--song);font-size:12.5px;color:var(--ink-soft)}
+  .task .foot{font-family:var(--song);font-size:11px;color:var(--ink-soft);margin-top:8px;
+    display:flex;gap:10px;align-items:center}
+  .task .contact{color:var(--wax);cursor:pointer;text-decoration:underline dotted}
+  .task .stamp{position:absolute;top:8px;right:10px;font-size:12px;color:var(--wax);
+    border:1.5px solid var(--wax);border-radius:3px;padding:1px 7px;transform:rotate(-12deg);opacity:.85}
+  .pin-btn{font-size:11px;border:none;background:transparent;color:var(--gold);cursor:pointer;
+    font-family:var(--song);text-decoration:underline dotted}
+  .empty{font-family:var(--song);font-size:12px;color:var(--ink-soft);text-align:center;padding:30px 10px}
+
+  /* 发布卷轴 */
+  #quill{position:absolute;bottom:18px;right:18px;z-index:6}
+  #quill button{background:var(--ink);color:var(--parchment);border:none;font-family:var(--kai);
+    font-size:14px;letter-spacing:3px;padding:11px 20px;border-radius:3px;cursor:pointer;
+    box-shadow:0 4px 14px rgba(0,0,0,.4)}
+  #form{position:absolute;bottom:66px;right:18px;z-index:6;width:min(340px,92vw);
+    background:var(--parchment);color:var(--ink);border-radius:5px;padding:16px 18px;display:none;
+    box-shadow:0 8px 30px rgba(0,0,0,.5);border:1px solid var(--line)}
+  #form.show{display:block}
+  #form h3{margin:0 0 8px;font-size:15px;font-weight:400;letter-spacing:2px}
+  #form label{font-family:var(--song);font-size:11px;color:var(--ink-soft)}
+  #form input,#form select,#form textarea{width:100%;margin:4px 0 10px;background:rgba(255,251,240,.7);
+    border:1px solid var(--line);border-radius:4px;padding:8px 10px;font-family:var(--song);
+    font-size:13px;color:var(--ink);outline:none}
+  #form textarea{resize:vertical;min-height:56px}
+  #form button{width:100%;background:var(--ink);color:var(--parchment);border:none;
+    font-family:var(--kai);letter-spacing:3px;font-size:14px;padding:9px;border-radius:4px;cursor:pointer}
+  .form-note{font-family:var(--song);font-size:10px;color:var(--ink-soft);margin:2px 0 8px}
+</style>
+</head>
+<body>
+
+<div id="seal">
+  <div class="scroll-cover">
+    <div class="wax">封</div>
+    <h1>游民活点地图</h1>
+    <div class="sub">NOMAD'S MAP · 数字游民互助任务卷轴</div>
+    <button class="oath" onclick="openMap()">我庄严宣誓我没干好事</button>
+    <div class="hint">远程互助小任务 · 钉在地图上 · 对接在微信里 · 平台不碰钱</div>
+  </div>
+</div>
+
+<div id="world">
+  <header>
+    <div><h1>游民活点地图</h1><div class="en">正在显示：全部墨迹</div></div>
+    <div class="spacer"></div>
+    <button class="mischief" onclick="mischiefManaged()">恶作剧完毕</button>
+  </header>
+  <div id="main">
+    <div id="map"></div>
+    <div class="vignette"></div>
+    <div class="frame"></div>
+    <div class="walker"><span>👣</span><span>👣</span><span>👣</span></div>
+    <div id="panel">
+      <div class="panel-head">
+        <h2>墨迹与脚印</h2>
+        <p>远程可完成的小事 · 点脚印看详情 · 联系方式点按才显</p>
+      </div>
+      <div class="filters" id="filters"></div>
+      <div id="tasks"></div>
+    </div>
+    <div id="quill"><button onclick="toggleForm()">以墨为誓 · 留下任务</button></div>
+    <form id="form" onsubmit="return addTask(event)">
+      <h3>新的墨迹</h3>
+      <label>任务标题 *</label>
+      <input id="t-title" required maxlength="40" placeholder="例：帮我看一个 Node 报错堆栈">
+      <label>学院（分类）*</label>
+      <select id="t-cat">
+        <option value="defense">黑魔法防御术 · 修 Bug</option>
+        <option value="runes">古代如尼文 · 翻译/文案</option>
+        <option value="transfig">变形术 · 设计/图像</option>
+        <option value="divination">算法占卜 · 数据/脚本</option>
+        <option value="muggle">麻瓜研究 · 其他杂务</option>
+      </select>
+      <label>详情（做什么、验收标准）*</label>
+      <textarea id="t-desc" required maxlength="300" placeholder="写清楚：要什么、多久算完成"></textarea>
+      <label>城市（远程任务可留「远程」）</label>
+      <select id="t-city"></select>
+      <label>联系方式 *（公开可见，别留敏感信息）</label>
+      <input id="t-contact" required maxlength="80" placeholder="微信号 / 邮箱">
+      <div class="form-note">平台不碰钱、不托管 · 对接自行完成 · 恶作剧完毕后请回来盖章</div>
+      <button type="submit">落墨</button>
+    </form>
+  </div>
+</div>
+
+<script>
+/* ===== 腾讯地图（合规：默认代理模式；对外发布版在下方 TMAP_KEY 填入
+   lbs.qq.com 申请的 key 并配 Referer 白名单，两套自动切换） ===== */
+const TMAP_KEY = '';
+function loadTMap(cb){
+  if (TMAP_KEY) {
+    const s = document.createElement('script');
+    s.src = 'https://map.qq.com/api/gljs?v=1.exp&key=' + encodeURIComponent(TMAP_KEY);
+    s.onload = cb; document.head.appendChild(s);
+  } else {
+    window._TMapSecurityConfig = { serviceHost: 'http://127.0.0.1:__WB_HTTP_PORT__/_TMapService/_wbt/__WB_TMAP_SECRET__' };
+    const s = document.createElement('script');
+    s.src = 'https://map.qq.com/api/gljs?v=1.exp';
+    s.onload = cb; document.head.appendChild(s);
+  }
+}
+
+/* ===== 学院（分类）与城市 ===== */
+const CATS = {
+  defense:   '黑魔法防御术 · 修 Bug',
+  runes:     '古代如尼文 · 翻译文案',
+  transfig:  '变形术 · 设计图像',
+  divination:'算法占卜 · 数据脚本',
+  muggle:    '麻瓜研究 · 其他杂务',
+};
+const CITIES = {
+  '远程': [35.0, 108.0], '大理': [25.69, 100.16], '清迈': [18.79, 98.98],
+  '里斯本': [38.72, -9.14], '巴厘岛': [-8.41, 115.19], '北京': [39.90, 116.40],
+  '上海': [31.23, 121.47], '深圳': [22.54, 114.06], '杭州': [30.27, 120.15], '成都': [30.57, 104.07],
+};
+
+/* ===== 本地卷轴库（localStorage；上云版此处换云端读写） ===== */
+const KEY = 'nomad_tasks_v1';
+const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; } };
+const save = a => localStorage.setItem(KEY, JSON.stringify(a));
+
+const SEED = [
+  { uid:'s1', title:'帮我看一个 Node 报错堆栈', cat:'defense', desc:'RangeError: Maximum call stack size exceeded，自己排查两小时无果，有偿请喝咖啡。', city:'远程', contact:'公众号后台留言：知识地下城', status:'open', ts:Date.now()-86400000 },
+  { uid:'s2', title:'把一页产品介绍翻成英文', cat:'runes', desc:'中文 600 字，要求口语化、别机翻味。验收：母语者读得顺。', city:'远程', contact:'xhs：酒里加盐', status:'open', ts:Date.now()-43200000 },
+  { uid:'s3', title:'给开源小工具画一张 1024 图标', cat:'transfig', desc:'扁平、单色可反白。验收：16px 下仍可辨认。', city:'大理', contact:'邮箱见公众号', status:'open', ts:Date.now()-7200000 },
+];
+if (!localStorage.getItem(KEY)) save(SEED);
+
+let filter = 'all', map, markers, infoWin;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function openMap(){
+  document.getElementById('seal').classList.add('open');
+  document.getElementById('world').classList.add('show');
+  setTimeout(initMap, 300);
+}
+function mischiefManaged(){
+  document.getElementById('seal').classList.remove('open');
+  document.getElementById('world').classList.remove('show');
+}
+
+function initMap(){
+  if (map) return; // 防重入
+  const el = document.getElementById('map');
+  map = new TMap.Map(el, { zoom: 3.2, center: new TMap.LatLng(28, 90), minZoom: 2.5, maxZoom: 12 });
+  markers = new TMap.MultiMarker({ map, styles: {
+    pin: new TMap.MarkerStyle({ width: 26, height: 26, anchor: { x: 13, y: 13 },
+      src: 'data:image/svg+xml,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g fill="#3B2F1E"><ellipse cx="9" cy="7" rx="5" ry="7"/><ellipse cx="17" cy="9" rx="5" ry="7"/><ellipse cx="9" cy="17.5" rx="4" ry="2.6"/><ellipse cx="17" cy="19.5" rx="4" ry="2.6"/></g></svg>') }),
+    pinDone: new TMap.MarkerStyle({ width: 26, height: 26, anchor: { x: 13, y: 13 },
+      src: 'data:image/svg+xml,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g fill="#8C7B54"><ellipse cx="9" cy="7" rx="5" ry="7"/><ellipse cx="17" cy="9" rx="5" ry="7"/></g></svg>') }),
+  }, geometries: [] });
+  markers.on('click', e => {
+    const t = load().find(x => x.uid === e.geometry.id);
+    if (t) showTask(t.uid);
+  });
+  initFilters(); renderTasks(); initCitySelect();
+}
+
+function initCitySelect(){
+  document.getElementById('t-city').innerHTML =
+    Object.keys(CITIES).map(c => '<option>' + c + '</option>').join('');
+}
+
+function initFilters(){
+  const box = document.getElementById('filters');
+  const btn = (k, label) => '<button data-k="' + k + '" class="' + (filter === k ? 'on' : '') + '" onclick="setFilter(\'' + k + '\')">' + label + '</button>';
+  box.innerHTML = btn('all', '全部') + Object.entries(CATS).map(([k, v]) => btn(k, v.split(' · ')[0])).join('');
+}
+function setFilter(k){ filter = k; initFilters(); renderTasks(); }
+
+function renderTasks(){
+  const all = load();
+  const box = document.getElementById('tasks');
+  const rows = all.filter(t => filter === 'all' || t.cat === filter)
+    .sort((a, b) => b.ts - a.ts);
+  box.innerHTML = rows.length ? rows.map(t => `
+    <div class="task ${t.status === 'done' ? 'done' : ''}">
+      ${t.status === 'done' ? '<div class="stamp">已完成</div>' : ''}
+      <span class="cat">${esc(CATS[t.cat] || t.cat)}</span>
+      <h3>${esc(t.title)}</h3>
+      <p>${esc(t.desc)}</p>
+      <p>📍 ${esc(t.city)}</p>
+      <div class="foot">
+        <span>${new Date(t.ts).toLocaleDateString('zh-CN')}</span>
+        <span class="contact" onclick="revealContact('${t.uid}', this)">📧 戳一下看联系方式</span>
+        ${t.status === 'open' ? '<button class="pin-btn" onclick="claimTask(\'' + t.uid + '\')">接单了→盖章</button>' : ''}
+      </div>
+    </div>`).join('') : '<div class="empty">这一栏还没有墨迹 —— 成为第一个落墨的人</div>';
+  syncPins();
+}
+
+function syncPins(){
+  if (!markers) return;
+  const geoms = load().filter(t => t.status === 'open' && t.city !== '远程').map((t, i) => ({
+    id: t.uid, styleId: 'pin',
+    position: new TMap.LatLng(CITIES[t.city][0] + (t.ts % 40 - 20) * 0.012,
+                              CITIES[t.city][1] + (t.ts % 37 - 18) * 0.012),
+  }));
+  markers.setGeometries(geoms);
+}
+
+function showTask(uid){ setFilter('all'); const el = [...document.querySelectorAll('.task')].find(e => e.innerHTML.includes('revealContact(\'' + uid)); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
+
+function revealContact(uid, el){
+  const t = load().find(x => x.uid === uid);
+  if (t) el.outerHTML = '<span class="contact" style="color:var(--ink)">' + esc(t.contact) + '</span>';
+}
+
+function claimTask(uid){
+  const all = load(); const t = all.find(x => x.uid === uid);
+  if (t) { t.status = 'done'; save(all); renderTasks(); toast('已盖章：恶作剧（的这一单）完毕'); }
+}
+
+function addTask(ev){
+  ev.preventDefault();
+  const all = load();
+  all.push({ uid: 't' + Date.now().toString(36), title: tTitle.value.trim(),
+    cat: tCat.value, desc: tDesc.value.trim(), city: tCity.value,
+    contact: tContact.value.trim(), status: 'open', ts: Date.now() });
+  save(all);
+  ev.target.reset(); toggleForm(); renderTasks();
+  toast('墨迹已落 —— 地图上亮起了新的脚印');
+}
+
+function toggleForm(){ document.getElementById('form').classList.toggle('show'); }
+
+let toastTimer;
+function toast(msg){
+  let el = document.getElementById('toast');
+  if (!el) { el = document.createElement('div'); el.id = 'toast';
+    el.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:99;background:var(--ink);color:var(--parchment);padding:10px 20px;border-radius:4px;font-size:14px;letter-spacing:1px';
+    document.body.appendChild(el); }
+  el.textContent = msg; el.style.display = 'block';
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.style.display = 'none', 3500);
+}
+
+loadTMap(() => { initMap(); });
+</script>
+</body>
+</html>
