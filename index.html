@@ -192,12 +192,23 @@ function loadTMap(cb){
 <script>
 /* ===== 云端卷轴库（WorkBuddy Cloud；失败时明示切换本机卷轴） ===== */
 const TABLE = 'nomad_tasks';
-/* GitHub 镜像站经 /bridge 桥接云端（平台 Origin 锁只认主站域名），主站直连 */
+/* 云端接入：主站直连 SDK；GitHub 镜像站经 /bridge 桥接
+   （平台 Origin 锁只认主站域名 + sharecode 门禁，SDK 无法直连，故用小 shim） */
 const WB_BASE = 'https://nomad-task-map-42915.app.workbuddy.host';
-const cloud = WorkBuddyCloud.createWorkBuddyCloud({
-  endpoint: location.hostname === 'slatinwine.github.io' ? WB_BASE + '/bridge' : WB_BASE,
+const SHARECODE = '6GYL2TAK34';
+const MIRROR = location.hostname === 'slatinwine.github.io';
+const cloud = MIRROR ? null : WorkBuddyCloud.createWorkBuddyCloud({
+  endpoint: WB_BASE,
   publishableKey: 'wbpk_LWIaHIS20D9wBfelrsHVPx_2M36ZkyD8kw4RDMji4IPjRwANWIboIyL',
 });
+const bridgeApi = async (qs, opts) => {
+  const res = await fetch(
+    WB_BASE + '/bridge/.cloud/database/rest/nomad_tasks' + qs +
+    (qs.includes('?') ? '&' : '?') + 'sharecode=' + SHARECODE, opts);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error((body && (body.message || body.error_description || body.error)) || ('HTTP ' + res.status));
+  return body;
+};
 let CLOUD = true;          // 云端可用性开关（失败时明示降级为本机模式）
 let TASKS = [];            // 内存缓存
 const LKEY = 'nomad_tasks_v1';
@@ -210,15 +221,29 @@ function setMode(ok, msg){
   document.getElementById('mode').style.color = ok ? '#8B7D5C' : '#C88A6A';
 }
 
+const rowMap = r => ({ uid: r.task_uid, title: r.title, cat: r.cat,
+  desc: r.descr, city: r.city || '远程', contact: r.contact,
+  status: r.status, ts: r.created_at ? Date.parse(r.created_at) : Date.now() });
+
 async function refreshTasks(){
-  if (CLOUD) {
+  if (MIRROR) {
+    try {
+      const rows = await bridgeApi('?select=*&order=created_at.desc&limit=200');
+      if (!Array.isArray(rows)) throw new Error(rows.error_description || rows.message || '桥接异常');
+      TASKS = rows.map(rowMap);
+      setMode(true, '云端卷轴库 · 镜像桥接共享');
+      return;
+    } catch (e) {
+      setMode(false, '桥接不可达 · 已切换本机卷轴（' + (e.message || '网络错误') + '）');
+      toast('云端卷轴暂时展开不了，先翻本机的——数据不会丢');
+    }
+  }
+  if (CLOUD && !MIRROR) {
     try {
       const { data, error } = await cloud.database.from(TABLE)
         .select('*').order('created_at', { ascending: false }).limit(200);
       if (error) throw error;
-      TASKS = (data || []).map(r => ({ uid: r.task_uid, title: r.title, cat: r.cat,
-        desc: r.descr, city: r.city || '远程', contact: r.contact,
-        status: r.status, ts: r.created_at ? Date.parse(r.created_at) : Date.now() }));
+      TASKS = (data || []).map(rowMap);
       setMode(true, '云端卷轴库 · 全网共享');
       return;
     } catch (e) {
@@ -229,13 +254,20 @@ async function refreshTasks(){
       toast('云端卷轴暂时展开不了，先翻本机的——数据不会丢');
     }
   }
-  if (!CLOUD) TASKS = localLoad();
+  if (!CLOUD || MIRROR) TASKS = localLoad();
 }
 
-const cloudInsert = t => cloud.database.from(TABLE).insert({
+const mirrorInsert = t => bridgeApi('', { method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ task_uid: t.uid, title: t.title, cat: t.cat, descr: t.desc,
+    city: t.city, contact: t.contact, status: t.status }) });
+const mirrorClaim = uid => bridgeApi('?task_uid=eq.' + encodeURIComponent(uid), { method: 'PATCH',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ status: 'done' }) });
+const cloudInsert = t => MIRROR ? mirrorInsert(t) : cloud.database.from(TABLE).insert({
   task_uid: t.uid, title: t.title, cat: t.cat, descr: t.desc,
   city: t.city, contact: t.contact, status: t.status });
-const cloudClaim = uid => cloud.database.from(TABLE)
+const cloudClaim = uid => MIRROR ? mirrorClaim(uid) : cloud.database.from(TABLE)
   .update({ status: 'done' }).eq('task_uid', uid);
 
 /* ===== 学院（分类）与城市 ===== */
