@@ -192,8 +192,10 @@ function loadTMap(cb){
 <script>
 /* ===== 云端卷轴库（WorkBuddy Cloud；失败时明示切换本机卷轴） ===== */
 const TABLE = 'nomad_tasks';
+/* GitHub 镜像站经 /bridge 桥接云端（平台 Origin 锁只认主站域名），主站直连 */
+const WB_BASE = 'https://nomad-task-map-42915.app.workbuddy.host';
 const cloud = WorkBuddyCloud.createWorkBuddyCloud({
-  endpoint: 'https://nomad-task-map-42915.app.workbuddy.host',
+  endpoint: location.hostname === 'slatinwine.github.io' ? WB_BASE + '/bridge' : WB_BASE,
   publishableKey: 'wbpk_LWIaHIS20D9wBfelrsHVPx_2M36ZkyD8kw4RDMji4IPjRwANWIboIyL',
 });
 let CLOUD = true;          // 云端可用性开关（失败时明示降级为本机模式）
