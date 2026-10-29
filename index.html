@@ -113,6 +113,27 @@
   #form button{width:100%;background:var(--ink);color:var(--parchment);border:none;
     font-family:var(--kai);letter-spacing:3px;font-size:14px;padding:9px;border-radius:4px;cursor:pointer}
   .form-note{font-family:var(--song);font-size:10px;color:var(--ink-soft);margin:2px 0 8px}
+
+  /* ===== 移动端：右侧面板变抽屉，不再盖住地图 ===== */
+  #panel-close,#panel-toggle{display:none}
+  @media (max-width:720px){
+    header{padding:10px 12px;gap:8px}
+    header h1{font-size:16px}
+    header .en,#mode{display:none}
+    #panel{position:absolute;top:0;right:0;bottom:0;width:min(320px,84vw);z-index:7;
+      transform:translateX(106%);transition:transform .28s ease;
+      box-shadow:-12px 0 28px rgba(20,12,4,.5)}
+    #panel.open{transform:translateX(0)}
+    .panel-head{display:flex;align-items:center;gap:10px}
+    .panel-head p{flex:1}
+    #panel-close{display:flex;align-items:center;justify-content:center;flex:none;
+      width:30px;height:30px;border:1px solid var(--line);border-radius:50%;
+      background:transparent;color:var(--ink-soft);font-size:14px;cursor:pointer}
+    #panel-toggle{display:flex;position:absolute;left:14px;bottom:18px;z-index:6;
+      background:var(--parchment);color:var(--ink);border:1px solid var(--line);
+      font-family:var(--kai);font-size:13px;letter-spacing:2px;padding:10px 16px;
+      border-radius:3px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+  }
 </style>
 </head>
 <body>
@@ -139,10 +160,12 @@
     <div class="vignette"></div>
     <div class="frame"></div>
     <div class="walker"><span>👣</span><span>👣</span><span>👣</span></div>
+    <button id="panel-toggle" onclick="togglePanel()">📜 墨迹与脚印</button>
     <div id="panel">
       <div class="panel-head">
         <h2>墨迹与脚印</h2>
         <p>远程可完成的小事 · 点脚印看详情 · 联系方式点按才显</p>
+        <button id="panel-close" onclick="togglePanel()" aria-label="收起面板">✕</button>
       </div>
       <div class="filters" id="filters"></div>
       <div id="tasks"><div class="empty">云端卷轴展开中…</div></div>
@@ -356,7 +379,9 @@ function syncPins(){
   markers.setGeometries(geoms);
 }
 
-function showTask(uid){ setFilter('all'); const el = [...document.querySelectorAll('.task')].find(e => e.innerHTML.includes('revealContact(\'' + uid)); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
+function togglePanel(){ document.getElementById('panel').classList.toggle('open'); }
+const isMobile = () => matchMedia('(max-width:720px)').matches;
+function showTask(uid){ setFilter('all'); if (isMobile()) document.getElementById('panel').classList.add('open'); const el = [...document.querySelectorAll('.task')].find(e => e.innerHTML.includes('revealContact(\'' + uid)); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
 
 function revealContact(uid, el){
   const t = TASKS.find(x => x.uid === uid);
